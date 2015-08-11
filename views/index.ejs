@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>IMAP</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        font: 200 1em 'Helvetica Neue';
+      }
+      .container {
+        min-width: 310px;
+        height: 400px;
+        max-width: 900px;
+        margin: 0 auto;
+      }
+      #details {
+        margin: 15em 35em;
+      }
+      .newText {
+        padding: 1em;
+        margin: 1em;
+        font-weight: bold;
+        color: blue;
+      }
+
+    </style>
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+    <script src="http://code.highcharts.com/highcharts.js"></script>
+    <script src="http://code.highcharts.com/modules/exporting.js"></script>
+
+    <script>
+
+      function generateHighchart(domEle, title, nameOfChart, data) {
+        $(function () {
+
+          // Make monochrome colors and set them as default for all pies
+          Highcharts.getOptions().plotOptions.pie.colors = (function () {
+            var colors = [],
+                    base = Highcharts.getOptions().colors[0],
+                    i;
+
+            for (i = 0; i < 10; i += 1) {
+              // Start out with a darkened base color (negative brighten), and end
+              // up with a much brighter color
+              colors.push(Highcharts.Color(base).brighten((i - 3) / 7).get());
+            }
+            return colors;
+          }());
+
+          // Build the chart
+          $(domEle).highcharts({
+            chart: {
+              plotBackgroundColor: null,
+              plotBorderWidth: null,
+              plotShadow: false,
+              type: 'pie'
+            },
+            title: {
+              text: title //'Browser market shares at a specific website, 2014'
+            },
+            tooltip: {
+              pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b>'
+            },
+            plotOptions: {
+              pie: {
+                allowPointSelect: true,
+                cursor: 'pointer',
+                dataLabels: {
+                  enabled: true,
+                  format: '<b>{point.name}</b>: {point.percentage:.1f} %',
+                  style: {
+                    color: (Highcharts.theme && Highcharts.theme.contrastTextColor) || 'black'
+                  }
+                }
+              }
+            },
+            series: [{
+              name: nameOfChart,
+              data: data
+            }]
+          });
+        });
+      }
+
+
+      document.addEventListener('DOMContentLoaded', function () {
+        var email = document.getElementById('emailId');
+        var pwd = document.getElementById('pwd');
+        var search = document.getElementById('search');
+
+        search.addEventListener('click', function () {
+          var details = document.getElementById('details');
+          details.style.display = 'none';
+          var newText = createElement('div',document.body);
+          createElement('h4',newText,'newText','Details for email: '+email.value);
+          makeAjaxCall('/','POST',{email: email.value, pwd: pwd.value}, function (xhr) {
+            var allEmails = JSON.parse(xhr.responseText);
+            var read = 0, unread = 0, withAttach = 0, withoutAttach = 0, allAttachments = [];
+            allEmails.forEach(function (m) {
+              //console.log(m);
+              if(m.attr.flags.indexOf('\\Seen') === -1){
+                //console.log('unread: ', m.id);
+                m.read = false;
+                unread++;
+              }else {
+                //console.log('read: ', m.id);
+                m.read = true;
+                read++;
+              }
+
+              var att = [];
+              if(m.attr.struct.length > 1){
+                m.attr.struct.forEach(function (a) {
+                  if(a[0] && a[0].disposition && a[0].disposition.type === 'attachment') {
+                    //console.log(a[0].subtype+' : '+a[0].disposition.params.filename);
+                    att.push({type: a[0].subtype, filename: a[0].disposition.params.filename});
+                    allAttachments.push(a[0].subtype);
+                  }
+                });
+              }
+              m.attachments = att;
+              att.length === 0 ? withoutAttach++ : withAttach++;
+            });
+
+
+            var compare = createElement('div',document.body,'container');
+            generateHighchart(compare,'Read vs Unread','comparison',[{name: 'Read', y: read}, {name: 'Unread', y: unread}]);
+
+            var attach = createElement('div',document.body,'container');
+            generateHighchart(attach,'Attachments vs No Attachments','comparison',[
+              {name: 'Emails with attachments', y: withAttach}, {name: 'Emails without attachments', y: withoutAttach}
+            ]);
+
+
+            var emailsWithAttach = {};
+            allAttachments.map( function (a) { if (a in emailsWithAttach) emailsWithAttach[a] ++; else emailsWithAttach[a] = 1; } );
+            var a = [];
+            for(var p in emailsWithAttach){
+              a.push({name: p, y: emailsWithAttach[p]});
+            }
+            var mime = createElement('div',document.body,'container');
+            generateHighchart(mime,'MIME types of attachments','comparison',a);
+
+          });
+        });
+      });
+
+      function createElement(elementType, parent, className, innerHTML, custom) {
+          var element = document.createElement(elementType);
+          if (parent) parent.appendChild(element);
+          if (className) element.className = className;
+          if (innerHTML) element.innerHTML = innerHTML;
+          if (typeof custom !== 'undefined') {
+              for (var prop in custom) {
+                  element.setAttribute(prop, custom[prop]);
+              }
+          }
+          return element;
+      }
+
+      function makeAjaxCall(url, httpVerb, obj, callback){
+        var xhr = new XMLHttpRequest();
+        xhr.open(httpVerb,url);
+        if(httpVerb === 'POST' || httpVerb === 'PUT') xhr.setRequestHeader('content-type', 'application/json');
+
+        xhr.addEventListener('readystatechange', function () {
+          if(xhr.readyState === 4) {
+            callback(xhr);
+          }
+        });
+        if(httpVerb === 'POST' || httpVerb === 'PUT') xhr.send(JSON.stringify(obj));
+        else xhr.send();
+      }
+
+    </script>
+  </head>
+  <body>
+  <div id="details">
+    <h4>Enter 'Yahoo' email details:</h4><br>
+    <input type="email" id="emailId" name="email" placeholder="enter your email id"/><br><br>
+    <input type="password" id="pwd" name="password" placeholder="enter your password"/><br><br>
+    <input type="button" id="search" value="Enter"/>
+  </div>
+
+
+  </body>
+</html>
